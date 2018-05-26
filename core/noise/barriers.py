@@ -1,12 +1,117 @@
 from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
+from .sources import Octaves
 import typing
+from scipy.interpolate import interp1d
 
 
-class ChannelElement(metaclass=ABCMeta):
+class Insulation(metaclass=ABCMeta):
+    def __init__(self):
+        self.octaves = Octaves()
+
+    @abstractmethod
+    def compute(self):
+        pass
+
+    @abstractmethod
+    def _R_get(self):
+        pass
+
+    R = abstractproperty(fget=_R_get)
+
+
+class FlatSteelInsulation(Insulation):
+    def __init__(self, thickness):
+        Insulation.__init__(self)
+        self.thickness = thickness
+        self.f_b = 6 / thickness
+        self.f_c = 12 / thickness
+        self.R_b = 39
+        self.R_c = 31
+        self.k_ab = 4
+        self.k_cd = 8
+        self.R_a = None
+        self.R_d = None
+        self._R = None
+
+    def compute(self):
+        f_b_log = np.log10(self.f_b)
+        f_c_log = np.log10(self.f_c)
+        f_a_log = np.log10(self.octaves.octave_centers[0])
+        f_d_log = np.log10(self.octaves.octave_centers[len(self.octaves.octave_centers) - 1])
+        self.R_a = self.R_b - (f_b_log - f_a_log) * self.k_ab
+        self.R_d = self.R_c + (f_d_log - f_c_log) * self.k_cd
+        self._R = interp1d(
+            [f_a_log, f_b_log, f_c_log, f_d_log], [self.R_a, self.R_b, self.R_d, self.R_c],
+            bounds_error=False, fill_value='extrapolate')(np.log10(self.octaves.octave_centers))
+
+    def _R_get(self):
+        return self._R
+
+    R = property(fget=_R_get)
+
+
+class CylindricalSteelInsulation(Insulation):
+    def __init__(self, D, thickness):
+        Insulation.__init__(self)
+        self.D = D
+        self.thickness = thickness
+        self.f_b = 1.6e3 / D
+        self.R_b = 74 - 20 * np.log10(D / thickness)
+        self.f_c = 12e1 / self.thickness
+        self.R_c = 31
+        self.k_ab = 6
+        self.k_cd = 8
+        self.R_a = None
+        self.R_d = None
+        self._R = None
+
+    def compute(self):
+        f_b_log = np.log10(self.f_b)
+        f_c_log = np.log10(self.f_c)
+        f_a_log = np.log10(self.octaves.octave_centers[0])
+        f_d_log = np.log10(self.octaves.octave_centers[len(self.octaves.octave_centers) - 1])
+        self.R_a = self.R_b + (f_b_log - f_a_log) * self.k_ab
+        self.R_d = self.R_c + (f_d_log - f_c_log) * self.k_cd
+        self._R = interp1d(
+            [f_a_log, f_b_log, f_c_log, f_d_log], [self.R_a, self.R_b, self.R_d, self.R_c],
+            bounds_error=False, fill_value='extrapolate')(np.log10(self.octaves.octave_centers))
+
+    def _R_get(self):
+        return self._R
+
+    R = property(fget=_R_get)
+
+
+class Barrier(metaclass=ABCMeta):
 
     @abstractmethod
     def _delta_L_p_get(self):
+        pass
+
+    delta_L_p = abstractproperty(fget=_delta_L_p_get)
+
+    @abstractmethod
+    def compute(self):
+        pass
+
+
+class ChannelElement(Barrier, metaclass=ABCMeta):
+    def __init__(self):
+        self.insulation: Insulation = None
+        self._delta_L_p_prime = None
+        self._delta_L_p = None
+
+    @property
+    def delta_L_p_prime(self):
+        return self._delta_L_p_prime
+
+    @delta_L_p_prime.setter
+    def delta_L_p_prime(self, value):
+        self._delta_L_p_prime = value
+
+    @abstractmethod
+    def _delta_L_p_length_get(self):
         pass
 
     @abstractmethod
@@ -23,11 +128,25 @@ class ChannelElement(metaclass=ABCMeta):
 
     length = abstractproperty(fget=_length_get)
 
-    delta_L_p = abstractproperty(fget=_delta_L_p_get)
+    delta_L_p_length = abstractproperty(fget=_delta_L_p_length_get)
+
+    def compute(self):
+        self.insulation.compute()
+        self._delta_L_p = (
+            self.delta_L_p_prime - 10 * np.log10(self.get_surface_square() / self.get_section_square()) +
+            self.insulation.R + 3 - 10 * np.log10(1 + 10**(-0.1 * self.delta_L_p_length))
+        )
+
+    def _delta_L_p_get(self):
+        return self._delta_L_p
+
+    delta_L_p = property(fget=_delta_L_p_get)
 
 
 class RoundMetalChannelElement(ChannelElement):
-    def __init__(self, D, length):
+    def __init__(self, D, length, thickness):
+        ChannelElement.__init__(self)
+        self.insulation = CylindricalSteelInsulation(D, thickness)
         self.D = D
         self._length = length
 
@@ -52,18 +171,20 @@ class RoundMetalChannelElement(ChannelElement):
         elif 1600e-3 < D:
             return np.array([0.03, 0.03, 0.03, 0.06, 0.06, 0.06, 0.06, 0.06])
 
-    def _delta_L_p_get(self):
+    def _delta_L_p_length_get(self):
         return self._length * self._get_delta_L_p_rel(self.D)
 
     def _length_get(self):
         return self._length
 
     length = property(fget=_length_get)
-    delta_L_p = property(fget=_delta_L_p_get)
+    delta_L_p_length = property(fget=_delta_L_p_length_get)
 
 
 class RectangularChannelElement(ChannelElement):
-    def __init__(self, width, height, length):
+    def __init__(self, width, height, length, thickness):
+        ChannelElement.__init__(self)
+        self.insulation = FlatSteelInsulation(thickness)
         self.width = width
         self.height = height
         self._length = length
@@ -90,18 +211,20 @@ class RectangularChannelElement(ChannelElement):
         elif 1600e-3 < D_h:
             return np.array([0.45, 0.3, 0.15, 0.1, 0.06, 0.06, 0.06, 0.06])
 
-    def _delta_L_p_get(self):
+    def _delta_L_p_length_get(self):
         return self._length * self._get_delta_L_p_rel(self.D_h)
 
     def _length_get(self):
         return self._length
 
     length = property(fget=_length_get)
-    delta_L_p = property(fget=_delta_L_p_get)
+    delta_L_p_length = property(fget=_delta_L_p_length_get)
 
 
 class RectangularSmoothTurnElement(ChannelElement):
-    def __init__(self, R, width, height, angle):
+    def __init__(self, R, width, height, angle, thickness):
+        ChannelElement.__init__(self)
+        self.insulation = FlatSteelInsulation(thickness)
         self.R = R
         self.width = width
         self.height = height
@@ -119,7 +242,7 @@ class RectangularSmoothTurnElement(ChannelElement):
         return sides_square + ring_segments_square
 
     @classmethod
-    def _get_delta_L_p(cls, turn_width):
+    def _get_delta_L_p_length(cls, turn_width):
         if turn_width <= 125e-3:
             return np.array([0, 0, 0, 0, 1, 2, 3, 3])
         elif 125e-3 < turn_width <= 250e-3:
@@ -133,22 +256,27 @@ class RectangularSmoothTurnElement(ChannelElement):
         elif 2000e-3 < turn_width:
             return np.array([0, 1, 2, 3, 3, 3, 3, 3])
 
-    def _delta_L_p_get(self):
-        return self._get_delta_L_p(self.get_turn_width())
+    def _delta_L_p_length_get(self):
+        return self._get_delta_L_p_length(self.get_turn_width())
 
     def _length_get(self):
         return self.angle * (self.R + 0.5 * self.width)
 
     length = property(fget=_length_get)
-    delta_L_p = property(fget=_delta_L_p_get)
+    delta_L_p_length = property(fget=_delta_L_p_length_get)
 
 
 class AdapterElement(ChannelElement):
-    def __init__(self, square_in, square_out, length):
+    def __init__(self, square_in, square_out, length, thickness):
+        ChannelElement.__init__(self)
         self.square_in = square_in
         self.square_out = square_out
         self.m = self.square_in / self.square_out
         self._length = length
+        self.insulation = CylindricalSteelInsulation(
+            np.sqrt(0.5 * (square_out + square_in) * 4 / np.pi),
+            thickness
+        )
         self._bound_section_sizes = np.array([5000, 2500, 1400, 700, 400, 200, 100, 50]) * 1e-3
 
     def get_surface_square(self):
@@ -160,7 +288,7 @@ class AdapterElement(ChannelElement):
     def get_max_section_size(self):
         return max(np.sqrt(4 * self.square_in / np.pi), np.sqrt(4 * self.square_out / np.pi))
 
-    def _delta_L_p_get(self):
+    def _delta_L_p_length_get(self):
         results = np.zeros([8])
         for n, bound_section_size in enumerate(self._bound_section_sizes):
             if self.get_max_section_size() < bound_section_size:
@@ -176,13 +304,16 @@ class AdapterElement(ChannelElement):
         return self._length
 
     length = property(fget=_length_get)
-    delta_L_p = property(fget=_delta_L_p_get)
+    delta_L_p_length = property(fget=_delta_L_p_length_get)
 
 
-class Channel:
-    def __init__(self, elements: typing.List[ChannelElement], R: np.ndarray=np.zeros([8])):
+class Channel(Barrier):
+    def __init__(self, elements: typing.List[ChannelElement]):
         self.elements = elements
-        self.R = R
+        self.surface_square = None
+        self.section_square = None
+        self._delta_L_p = None
+        self.delta_L_p_prime = None
 
     @classmethod
     def _get_L_p_outlet(cls, section_size):
@@ -259,21 +390,50 @@ class Channel:
             res += element.get_surface_square()
         return res
 
-    def get_L_p_sum(self):
+    def get_delta_L_p_elements_sum(self):
         res = np.zeros([8])
         for element in self.elements:
-            res += element.delta_L_p
+            res += element.delta_L_p_length
+        return res
 
     def compute(self):
         self.surface_square = self.get_surface_square()
         self.section_square = self.get_section_square()
-        self.delta_L_p_elements_sum = self.get_L_p_sum() + self._get_L_p_outlet(
+        self._delta_L_p = self.get_delta_L_p_elements_sum() + self._get_L_p_outlet(
             np.sqrt(self.elements[len(self.elements) - 1].get_section_square())
         )
-        self.delta_L_p = (
-                -10 * np.log10(self.surface_square / self.section_square) + self.R + 3 -
-                10 * np.log10(1 + 10**(-0.1 * self.delta_L_p_elements_sum))
-        )
+        self.delta_L_p_prime = np.zeros([8])
+        for element in self.elements:
+            element.delta_L_p_prime = self.delta_L_p_prime.copy()
+            element.compute()
+            self.delta_L_p_prime += element.delta_L_p_length
+
+    def _delta_L_p_get(self):
+        return self._delta_L_p
+
+    delta_L_p = property(fget=_delta_L_p_get)
+
+
+class OpenSpace(Barrier):
+    def __init__(self, r, fi=1, omega=4 * np.pi):
+        self.r = r
+        self.fi = fi
+        self.omega = omega
+        self.beta_a = np.array([0, 0.7, 1.5, 3, 6, 12, 24, 48])
+        self._delta_L_p = None
+
+    def compute(self):
+        if self.r <= 50:
+            self._delta_L_p = 15 * np.log10(self.r) - 10 * np.log10(self.fi) + 10 * np.log10(self.omega)
+        else:
+            self._delta_L_p = 15 * np.log10(self.r) - 10 * np.log10(self.fi) + 10 * np.log10(self.omega) + \
+                              self.beta_a * self.r / 1000
+
+    def _delta_L_p_get(self):
+        return self._delta_L_p
+
+    delta_L_p = property(fget=_delta_L_p_get)
+
 
 
 

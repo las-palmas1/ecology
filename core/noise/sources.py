@@ -9,7 +9,7 @@ from gas_turbine_cycle.gases import IdealGas
 class Octaves:
     def __init__(self):
         self._octave_centers = np.array([
-            63, 125, 250, 500, 1000, 2000, 4000, 80000
+            63, 125, 250, 500, 1000, 2000, 4000, 8000
         ])
         self._octave_bounds = np.array([
             [45, 90], [90, 180], [180, 355], [355, 710], [710, 1400], [1400, 2800], [2800, 5600],
@@ -210,6 +210,11 @@ class OutletNoiseSource(NoiseSource):
         self.F_out = width * height
         self.Sh = np.array([0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10])
         self.delta_L_p_interp = np.array([20, 11.5, 6, 4, 7, 11, 13, 18.5, 21.5])
+        self._L_p_sum = None
+        self.d_h_out = None
+        self.frequency_interp = None
+        self.delta_L_p = None
+        self._L_p = None
 
     def compute(self):
         self._L_p_sum = 80 * np.log10(self.c_out) + 20 * np.log10(self.rho_out) + 10 * np.log10(self.F_out) - 44
