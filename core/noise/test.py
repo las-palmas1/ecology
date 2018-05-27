@@ -1,7 +1,7 @@
 import unittest
 from .sources import Outlet, OutletNoiseSource, InletNoiseSource
 from .barriers import *
-from .analysis import Room, get_sum_sound_power_level
+from .analysis import Room, TurbineNoise
 from gas_turbine_cycle.gases import KeroseneCombustionProducts
 import matplotlib.pyplot as plt
 
@@ -79,6 +79,23 @@ class TestTurbineNoise(unittest.TestCase):
 
         self.open_space = OpenSpace(
             r=100, fi=1, omega=4*np.pi
+        )
+        self.switchboard = Room(
+            volume=10**3,
+            barrier_square=10**2,
+            L_allow=np.array([91, 83, 77, 73, 70, 68, 66, 64]),
+            L_out=None,
+            room_coef=1/10,
+            n_barrier=1
+        )
+
+        self.turbine_noise = TurbineNoise(
+            inlet_source=self.inlet_source,
+            outlet_source=self.outlet_source,
+            inlet_channel=self.inlet_channel,
+            outlet_channel=self.outlet_channel,
+            open_space=self.open_space,
+            switchboard=self.switchboard
         )
 
     def test_sources(self):
@@ -196,6 +213,22 @@ class TestTurbineNoise(unittest.TestCase):
         plt.xscale('log')
         plt.grid()
         plt.show()
+
+    def test_turbine_noise_channel_drop(self):
+        self.turbine_noise.compute()
+        self.turbine_noise.plot_channel_noise_drop(figsize=(8, 6))
+
+    def test_turbine_noise_inlet_open_space_drop(self):
+        self.turbine_noise.compute()
+        self.turbine_noise.plot_inlet_open_space_noise_drop(figsize=(8, 6))
+
+    def test_turbine_noise_outlet_open_space_drop(self):
+        self.turbine_noise.compute()
+        self.turbine_noise.plot_outlet_open_space_noise_drop(figsize=(8, 6))
+
+    def test_turbine_noise_near_switchboard_noise(self):
+        self.turbine_noise.compute()
+        self.turbine_noise.plot_near_switchboard_noise(figsize=(8, 6))
 
 
 

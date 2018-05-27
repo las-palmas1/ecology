@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import typing
-from .sources import Octaves
+from .sources import Octaves, OutletNoiseSource, InletNoiseSource
+from .barriers import Channel, OpenSpace
 
 
 def get_sum_sound_power_level(L_p_arr: typing.List[np.ndarray]):
@@ -12,7 +13,7 @@ def get_sum_sound_power_level(L_p_arr: typing.List[np.ndarray]):
 
 
 class Room:
-    def __init__(self, volume, barrier_square, L_allow, L_out, room_coef=1 / 10, n_barrier=1, ):
+    def __init__(self, volume, barrier_square, L_allow, L_out, room_coef=1 / 10, n_barrier=1):
         self.volume = volume
         self.barrier_square = barrier_square
         self.L_allow = L_allow
@@ -49,4 +50,197 @@ class Room:
         if fname:
             plt.savefig(fname)
         plt.show()
+
+
+class TurbineNoise:
+    def __init__(
+            self,
+            inlet_source: InletNoiseSource,
+            outlet_source: OutletNoiseSource,
+            inlet_channel: Channel,
+            outlet_channel: Channel,
+            open_space: OpenSpace,
+            switchboard: Room,
+    ):
+        self.inlet_source = inlet_source
+        self.outlet_source = outlet_source
+        self.inlet_channel = inlet_channel
+        self.outlet_channel = outlet_channel
+        self.open_space = open_space
+        self.switchboard = switchboard
+        self.L_p_near_board_sum = None
+        self.L_p_near_board_list = None
+
+    def compute(self):
+        self.inlet_source.compute()
+        self.outlet_source.compute()
+        self.inlet_channel.compute()
+        self.outlet_channel.compute()
+        self.open_space.compute()
+        self.L_p_near_board_list = []
+
+        for element in self.inlet_channel.elements:
+            self.L_p_near_board_list.append(self.inlet_source.L_p - element.delta_L_p)
+        self.L_p_near_board_list.append(self.inlet_source.L_p - self.inlet_channel.delta_L_p)
+        for element in self.outlet_channel.elements:
+            self.L_p_near_board_list.append(self.outlet_source.L_p - element.delta_L_p)
+        self.L_p_near_board_list.append(self.outlet_source.L_p - self.outlet_channel.delta_L_p)
+
+        self.L_p_near_board_sum = get_sum_sound_power_level(self.L_p_near_board_list)
+
+        self.switchboard.L_out = self.L_p_near_board_sum
+        self.switchboard.compute()
+
+    def plot_channel_noise_drop(self, figsize=(8, 6), fname=None):
+        plt.figure(figsize=figsize)
+        plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p, lw=1.5,
+                 color='red', label=r'$Вход\ в\ ГТУ$')
+        plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - self.inlet_channel.delta_L_p,
+                 lw=1.5, c='red', ls='--', label=r'$Вход\ в\ канал\ КОВУ$')
+        for n, element in enumerate(self.inlet_channel.elements):
+            if n == 0:
+                plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':', label=r'$Стенки\ участков\ КОВУ$')
+            else:
+                plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':')
+
+        plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p, lw=1.5,
+                 color='blue', label=r'$Выход\ из\ ГТУ$')
+        plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - self.outlet_channel.delta_L_p,
+                 lw=1.5, c='blue', ls='--', label=r'$Выход\ из\ канала\ вых.\ у-ва$')
+        for n, element in enumerate(self.outlet_channel.elements):
+            if n == 0:
+                plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='blue', ls=':', label=r'$Стенки\ участков\ канала\ вых.\ у-ва$')
+            else:
+                plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='blue', ls=':')
+
+        plt.grid()
+        plt.xscale('log')
+        plt.xlabel(r'$f,\ Гц$', fontsize=12)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.legend(fontsize=10)
+        if fname:
+            plt.savefig(fname)
+        plt.show()
+
+    def plot_inlet_open_space_noise_drop(self, figsize=(8, 6), fname=None):
+        plt.figure(figsize=figsize)
+        plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - self.inlet_channel.delta_L_p,
+                 lw=1.5, c='red', ls='--', label=r'$Вход\ в\ канал\ КОВУ$')
+        for n, element in enumerate(self.inlet_channel.elements):
+            if n == 0:
+                plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':', label=r'$Стенки\ участков\ КОВУ$')
+            else:
+                plt.plot(self.inlet_source.octaves.octave_centers, self.inlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':')
+
+        plt.plot(self.inlet_source.octaves.octave_centers,
+                 self.inlet_source.L_p - self.inlet_channel.delta_L_p - self.open_space.delta_L_p,
+                 lw=1.5, c='blue', ls='--', label=r'$Вход\ в\ канал\ ГТУ\ через\ %.1f\ м$' % self.open_space.r)
+        for n, element in enumerate(self.inlet_channel.elements):
+            if n == 0:
+                plt.plot(self.inlet_source.octaves.octave_centers,
+                         self.inlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':', label=r'$Стенки\ участков\ КОВУ\ через\ %.1f\ м$' % self.open_space.r)
+            else:
+                plt.plot(self.inlet_source.octaves.octave_centers,
+                         self.inlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':')
+
+        plt.grid()
+        plt.xscale('log')
+        plt.xlabel(r'$f,\ Гц$', fontsize=12)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.legend(fontsize=10)
+        if fname:
+            plt.savefig(fname)
+        plt.show()
+
+    def plot_outlet_open_space_noise_drop(self, figsize=(8, 6), fname=None):
+        plt.figure(figsize=figsize)
+        plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - self.outlet_channel.delta_L_p,
+                 lw=1.5, c='red', ls='--', label=r'$Выход\ из\ канала\ вых.\ у-ва$')
+        for n, element in enumerate(self.outlet_channel.elements):
+            if n == 0:
+                plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':', label=r'$Стенки\ участков\ канала\ вых.\ у-ва$')
+            else:
+                plt.plot(self.outlet_source.octaves.octave_centers, self.outlet_source.L_p - element.delta_L_p,
+                         lw=1.5, c='red', ls=':')
+
+        plt.plot(self.outlet_source.octaves.octave_centers,
+                 self.outlet_source.L_p - self.outlet_channel.delta_L_p - self.open_space.delta_L_p,
+                 lw=1.5, c='blue', ls='--', label=r'$Выход\ из\ канала\ вых.\ у-ва\ через\ %.1f\ м$' % self.open_space.r)
+        for n, element in enumerate(self.outlet_channel.elements):
+            if n == 0:
+                plt.plot(self.outlet_source.octaves.octave_centers,
+                         self.outlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':',
+                         label=r'$Стенки\ участков\ канала\ вых.\ у-ва\ через\ %.1f\ м$' % self.open_space.r)
+            else:
+                plt.plot(self.outlet_source.octaves.octave_centers,
+                         self.outlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':')
+
+        plt.grid()
+        plt.xscale('log')
+        plt.xlabel(r'$f,\ Гц$', fontsize=12)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.legend(fontsize=10)
+        if fname:
+            plt.savefig(fname)
+        plt.show()
+
+    def plot_near_switchboard_noise(self, figsize=(8, 6), fname=None):
+        plt.figure(figsize=figsize)
+
+        plt.plot(self.inlet_source.octaves.octave_centers,
+                 self.inlet_source.L_p - self.inlet_channel.delta_L_p - self.open_space.delta_L_p,
+                 lw=1.5, c='red', ls='--', label=r'$Вход\ в\ канал\ ГТУ$')
+        for n, element in enumerate(self.inlet_channel.elements):
+            if n == 0:
+                plt.plot(self.inlet_source.octaves.octave_centers,
+                         self.inlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='red', ls=':', label=r'$Стенки\ участков\ КОВУ$')
+            else:
+                plt.plot(self.inlet_source.octaves.octave_centers,
+                         self.inlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='red', ls=':')
+
+        plt.plot(self.outlet_source.octaves.octave_centers,
+                 self.outlet_source.L_p - self.outlet_channel.delta_L_p - self.open_space.delta_L_p,
+                 lw=1.5, c='blue', ls='--', label=r'$Выход\ из\ канала\ вых.\ у-ва$')
+        for n, element in enumerate(self.outlet_channel.elements):
+            if n == 0:
+                plt.plot(self.outlet_source.octaves.octave_centers,
+                         self.outlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':',
+                         label=r'$Стенки\ участков\ канала\ вых.\ у-ва$')
+            else:
+                plt.plot(self.outlet_source.octaves.octave_centers,
+                         self.outlet_source.L_p - element.delta_L_p - self.open_space.delta_L_p,
+                         lw=1.5, c='blue', ls=':')
+
+        plt.plot(self.inlet_source.octaves.octave_centers, self.L_p_near_board_sum, c='black', lw=2,
+                 label=r'$Суммарный\ шум\ у\ щита\ управления$')
+        plt.plot(self.inlet_source.octaves.octave_centers, self.switchboard.L_allow, c='black', lw=2, ls='--',
+                 label=r'$Допустимый\ шум\ внутри\ щита\ управления$')
+
+        plt.grid()
+        plt.xscale('log')
+        plt.xlabel(r'$f,\ Гц$', fontsize=12)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.legend(fontsize=10)
+        if fname:
+            plt.savefig(fname)
+        plt.show()
+
+
+
+
+
 
