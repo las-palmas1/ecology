@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
 from .sources import Octaves
 import typing
+import pandas as pd
 from scipy.interpolate import interp1d
 
 
@@ -314,6 +315,7 @@ class Channel(Barrier):
         self.section_square = None
         self._delta_L_p = None
         self.delta_L_p_prime = None
+        self.delta_L_p_out = None
 
     @classmethod
     def _get_L_p_outlet(cls, section_size):
@@ -399,9 +401,10 @@ class Channel(Barrier):
     def compute(self):
         self.surface_square = self.get_surface_square()
         self.section_square = self.get_section_square()
-        self._delta_L_p = self.get_delta_L_p_elements_sum() + self._get_L_p_outlet(
+        self.delta_L_p_out = self._get_L_p_outlet(
             np.sqrt(self.elements[len(self.elements) - 1].get_section_square())
         )
+        self._delta_L_p = self.get_delta_L_p_elements_sum() + self.delta_L_p_out
         self.delta_L_p_prime = np.zeros([8])
         for element in self.elements:
             element.delta_L_p_prime = self.delta_L_p_prime.copy()
@@ -412,6 +415,26 @@ class Channel(Barrier):
         return self._delta_L_p
 
     delta_L_p = property(fget=_delta_L_p_get)
+
+    def get_elements_data(self) -> pd.DataFrame:
+        columns = [63, 125, 250, 500, 1000, 2000, 4000, 8000]
+        records = []
+        index = [[], []]
+        for n, element in enumerate(self.elements):
+            records.append(list(element.delta_L_p_length))
+            records.append(list(element.delta_L_p_prime))
+            records.append(list(element.insulation.R))
+            records.append(list(element.delta_L_p))
+            index[1].append('$\Delta L$')
+            index[1].append('$\Delta L_p^\prime$')
+            index[1].append('$R$')
+            index[1].append('$\Delta L_p$')
+            index[0].append(n + 1)
+            index[0].append(n + 1)
+            index[0].append(n + 1)
+            index[0].append(n + 1)
+        res = pd.DataFrame.from_records(records, index=index, columns=columns)
+        return res
 
 
 class OpenSpace(Barrier):

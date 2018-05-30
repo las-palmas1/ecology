@@ -230,5 +230,13 @@ class TestTurbineNoise(unittest.TestCase):
         self.turbine_noise.compute()
         self.turbine_noise.plot_near_switchboard_noise(figsize=(8, 6))
 
+    def test_turbine_noise_channel_elements_data(self):
+        self.turbine_noise.compute()
+        print(self.turbine_noise.inlet_channel.get_elements_data())
+
+    def test_turbine_noise_data(self):
+        self.turbine_noise.compute()
+        print(self.turbine_noise.get_data())
+
 
 

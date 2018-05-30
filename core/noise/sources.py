@@ -95,7 +95,7 @@ class InletNoiseSource(NoiseSource):
         self.lam1 = lam1
         self.blade_num = blade_num
         self.f_rel_base = blade_num
-        self.P0 = 10e-12
+        self.P0 = 1e-12
         self.delta_L_p_base_num = 6
         self.delta_L_p_init = np.array([26, 24, 22.5, 21, 16, 12, 3, 5, 6, 7, 9, 11, 17, 18.5])
         self.delta_L_p_interp = None

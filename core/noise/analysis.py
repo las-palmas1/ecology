@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import typing
 from .sources import Octaves, OutletNoiseSource, InletNoiseSource
 from .barriers import Channel, OpenSpace
+import pandas as pd
 
 
 def get_sum_sound_power_level(L_p_arr: typing.List[np.ndarray]):
@@ -119,8 +120,10 @@ class TurbineNoise:
 
         plt.grid()
         plt.xscale('log')
-        plt.xlabel(r'$f,\ Гц$', fontsize=12)
-        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.xlabel(r'$f,\ Гц$', fontsize=14)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
         plt.legend(fontsize=10)
         if fname:
             plt.savefig(fname)
@@ -153,8 +156,10 @@ class TurbineNoise:
 
         plt.grid()
         plt.xscale('log')
-        plt.xlabel(r'$f,\ Гц$', fontsize=12)
-        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.xlabel(r'$f,\ Гц$', fontsize=14)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
         plt.legend(fontsize=10)
         if fname:
             plt.savefig(fname)
@@ -188,8 +193,10 @@ class TurbineNoise:
 
         plt.grid()
         plt.xscale('log')
-        plt.xlabel(r'$f,\ Гц$', fontsize=12)
-        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.xlabel(r'$f,\ Гц$', fontsize=14)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
         plt.legend(fontsize=10)
         if fname:
             plt.savefig(fname)
@@ -232,12 +239,56 @@ class TurbineNoise:
 
         plt.grid()
         plt.xscale('log')
-        plt.xlabel(r'$f,\ Гц$', fontsize=12)
-        plt.ylabel(r'$L_p,\ Дб$', fontsize=12)
+        plt.xlabel(r'$f,\ Гц$', fontsize=14)
+        plt.ylabel(r'$L_p,\ Дб$', fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
         plt.legend(fontsize=10)
         if fname:
             plt.savefig(fname)
         plt.show()
+
+    def get_data(self) -> pd.DataFrame:
+        columns = [63, 125, 250, 500, 1000, 2000, 4000, 8000]
+        records = [
+            list(self.inlet_source.L_p),
+            list(self.outlet_source.L_p),
+            list(self.inlet_channel.delta_L_p_out),
+            list(self.inlet_channel.delta_L_p),
+            list(self.outlet_channel.delta_L_p_out),
+            list(self.outlet_channel.delta_L_p),
+            list(self.open_space.delta_L_p),
+            list(self.switchboard.L_out),
+            list(self.switchboard.L_allow),
+            list(self.switchboard.R),
+        ]
+        index = [
+            [
+                'Воздухозабор',
+                'Выхлоп',
+                'Канал вх-ого устр-ва',
+                'Канал вх-ого устр-ва',
+                'Канал вых-ого устр-ва',
+                'Канал вых-ого устр-ва',
+                'Открытое пр-во',
+                'Щит управления',
+                'Щит управления',
+                'Щит управления',
+            ],
+            [
+                '$L_p$',
+                '$L_p$',
+                '$\Delta L_{p\ вых}$',
+                '$\Delta L_p$',
+                '$\Delta L_{p\ вых}$',
+                '$\Delta L_p$',
+                '$\Delta L_p$',
+                '$L_{нар}$',
+                '$L_{доп}$',
+                '$R$',
+            ]
+        ]
+        return pd.DataFrame.from_records(records, index=index, columns=columns)
 
 
 
